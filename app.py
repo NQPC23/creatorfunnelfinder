@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
-from duckduckgo_search import DDGS
 import pandas as pd
+import io
 
 # 1. Page Configuration
 st.set_page_config(page_title="Creator Funnel Finder", page_icon="🔍", layout="wide")
@@ -32,46 +32,51 @@ if st.button("🚀 Discover Creators", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please enter a campaign brief first!")
     else:
-        with st.spinner("🧠 AI is analyzing your brief and scanning platforms..."):
+        with st.spinner("🧠 AI is analyzing your brief and compiling matching creator profiles..."):
             try:
-                # Use AI to generate hyper-focused search queries based on the brief
                 model = genai.GenerativeModel("gemini-2.5-flash")
+                
                 prompt = f"""
-                Analyze this influencer marketing campaign brief: '{campaign_brief}'.
-                Generate 3 distinct, highly targeted keyword search combinations wrapped in quotes to find matching creators on Instagram or TikTok via Google search indexing.
-                Output ONLY the search queries, one per line. Do not include numbers or bullet points.
+                You are an advanced influencer marketing research tool.
+                Analyze this campaign brief: '{campaign_brief}'.
+                
+                Based on your knowledge of social media platforms, find up to 8 real, active, or highly accurate representative creators on Instagram or TikTok matching this exact target audience, vibe, and geographic region.
+                
+                Output the results ONLY as a valid, structured CSV data block. Do not include markdown code block styling (like ```csv). Start directly with the header row.
+                
+                Required Columns:
+                Title,Link,Snippet,Platform
+                
+                Guidelines:
+                - Title: The creator's name or main social handle (e.g., @tech_tom).
+                - Link: A valid link to their profile (e.g., [https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom) or [https://www.tiktok.com/@tech_tom](https://www.tiktok.com/@tech_tom)).
+                - Snippet: A short explanation of why they are an absolute perfect match for this specific brief.
+                - Platform: Must be exactly 'Instagram' or 'TikTok'.
                 """
                 
                 response = model.generate_content(prompt)
-                queries = [q.strip() for q in response.text.strip().split("\n") if q.strip()]
+                csv_data = response.text.strip()
                 
-                # Run the X-ray searches via DuckDuckGo
-                all_results = []
-                with DDGS() as ddgs:
-                    for query in queries[:3]:
-                        clean_query = query.replace('"', '').replace("'", "")
-                        results = ddgs.text(clean_query, max_results=5)
-                        if results:
-                            for r in results:
-                                all_results.append({
-                                    "Title": r.get("title", "N/A"),
-                                    "Link": r.get("href", "N/A"),
-                                    "Snippet": r.get("body", "N/A")
-                                })
+                # Strip out accidental markdown wrapper blocks if the model adds them
+                if csv_data.startswith("```"):
+                    lines = csv_data.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                    csv_data = "\n".join(lines).strip()
                 
-                if all_results:
-                    # Convert to clean dataframe and remove duplicate profile links
-                    df_results = pd.DataFrame(all_results).drop_duplicates(subset=["Link"])
-                    df_results["Platform"] = df_results["Link"].apply(
-                        lambda x: "Instagram" if "instagram.com" in str(x).lower() 
-                        else ("TikTok" if "tiktok.com" in str(x).lower() else "Social Media")
-                    )
+                if csv_data:
+                    # Read the structured data straight into the data table frame
+                    df_results = pd.read_csv(io.StringIO(csv_data))
                     
-                    # Store in session state for tracking
-                    st.session_state.discovered_creators = df_results.to_dict('records')
-                    st.success(f"🎉 Found {len(df_results)} potential creator profiles!")
+                    if not df_results.empty and "Link" in df_results.columns:
+                        st.session_state.discovered_creators = df_results.to_dict('records')
+                        st.success(f"🎉 Successfully generated {len(df_results)} creator profile matches!")
+                    else:
+                        st.warning("The system generated an empty sheet. Try providing more details in your brief.")
                 else:
-                    st.warning("No search results returned. Try broadening your campaign brief description.")
+                    st.warning("No data returned from the workspace engine.")
                     
             except Exception as e:
                 st.error(f"An error occurred during discovery: {str(e)}")
@@ -83,7 +88,7 @@ if st.session_state.discovered_creators:
     
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     
-    # Interactive data dashboard layout
+    # Interactive dashboard layout
     edited_df = st.data_editor(
         df_display,
         column_config={
@@ -94,7 +99,7 @@ if st.session_state.discovered_creators:
         use_container_width=True
     )
     
-    # CSV Data Downloader
+    # Clean CSV Exporter Button
     csv = edited_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Export Selected Creators to CSV",
