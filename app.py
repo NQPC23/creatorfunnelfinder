@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
-import io
+import json
 
 # 1. Page Configuration
 st.set_page_config(page_title="Creator Funnel Finder", page_icon="🔍", layout="wide")
@@ -42,39 +42,40 @@ if st.button("🚀 Discover Creators", type="primary"):
                 
                 Based on your knowledge of social media platforms, find up to 8 real, active, or highly accurate representative creators on Instagram or TikTok matching this exact target audience, vibe, and geographic region.
                 
-                Output the results ONLY as a valid, structured CSV data block. Do not include markdown code block styling (like ```csv). Start directly with the header row.
+                Output the results ONLY as a valid JSON array of objects. Do not include markdown code block styling (like ```json). Start directly with the opening bracket [.
                 
-                Required Columns:
-                Title,Link,Snippet,Platform
+                Each object in the array must have exactly these keys:
+                "Title", "Link", "Snippet", "Platform"
                 
                 Guidelines:
-                - Title: The creator's name or main social handle (e.g., @tech_tom).
-                - Link: A valid link to their profile (e.g., [https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom) or [https://www.tiktok.com/@tech_tom](https://www.tiktok.com/@tech_tom)).
+                - Title: The creator's name or main social handle (e.g., "@tech_tom").
+                - Link: A valid link to their profile (e.g., "[https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom)" or "[https://www.tiktok.com/@tech_tom](https://www.tiktok.com/@tech_tom)").
                 - Snippet: A short explanation of why they are an absolute perfect match for this specific brief.
                 - Platform: Must be exactly 'Instagram' or 'TikTok'.
                 """
                 
                 response = model.generate_content(prompt)
-                csv_data = response.text.strip()
+                raw_data = response.text.strip()
                 
                 # Strip out accidental markdown wrapper blocks if the model adds them
-                if csv_data.startswith("```"):
-                    lines = csv_data.split("\n")
+                if raw_data.startswith("```"):
+                    lines = raw_data.split("\n")
                     if lines[0].startswith("```"):
                         lines = lines[1:]
                     if lines[-1].startswith("```"):
                         lines = lines[:-1]
-                    csv_data = "\n".join(lines).strip()
+                    raw_data = "\n".join(lines).strip()
                 
-                if csv_data:
-                    # Read the structured data straight into the data table frame
-                    df_results = pd.read_csv(io.StringIO(csv_data))
+                if raw_data:
+                    # Parse the structured JSON data safely 
+                    creators_list = json.loads(raw_data)
+                    df_results = pd.DataFrame(creators_list)
                     
                     if not df_results.empty and "Link" in df_results.columns:
                         st.session_state.discovered_creators = df_results.to_dict('records')
                         st.success(f"🎉 Successfully generated {len(df_results)} creator profile matches!")
                     else:
-                        st.warning("The system generated an empty sheet. Try providing more details in your brief.")
+                        st.warning("The system generated an empty dataset. Try providing more details in your brief.")
                 else:
                     st.warning("No data returned from the workspace engine.")
                     
@@ -99,7 +100,7 @@ if st.session_state.discovered_creators:
         use_container_width=True
     )
     
-    # Clean CSV Exporter Button
+    # Clean CSV Exporter Button for the user UI
     csv = edited_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Export Selected Creators to CSV",
