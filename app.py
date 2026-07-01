@@ -32,15 +32,20 @@ if st.button("🚀 Discover Creators", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please enter a campaign brief first!")
     else:
-        with st.spinner("🧠 AI is compiling matching creator profiles and baseline metrics..."):
+        with st.spinner("🧠 AI is executing live Google Search grounding to find authentic profiles..."):
             try:
-                model = genai.GenerativeModel("gemini-2.5-flash")
+                # Activating Google's native live-search index tool
+                model = genai.GenerativeModel(
+                    model_name="gemini-2.5-flash",
+                    tools=[{"google_search_retrieval": {}}]
+                )
                 
                 prompt = f"""
                 You are an advanced influencer marketing research tool.
                 Analyze this campaign brief: '{campaign_brief}'.
                 
-                Based on your knowledge of social media platforms, find up to 8 real, active, or highly accurate representative creators on Instagram or TikTok matching this exact target audience, vibe, and geographic region.
+                Use live Google Search data to find up to 8 REAL, active, prominent creators on Instagram or TikTok matching this exact target audience and geographic region.
+                Do not guess or invent usernames. Every profile must correspond to an actual, live social media account indexed on the web.
                 
                 Output the results ONLY as a valid JSON array of objects. Do not include markdown code block styling (like ```json). Start directly with the opening bracket [.
                 
@@ -49,10 +54,10 @@ if st.button("🚀 Discover Creators", type="primary"):
                 
                 Guidelines:
                 - Title: The creator's name or main social handle (e.g., "@tech_tom").
-                - Link: A valid link to their profile (e.g., "[https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom)").
+                - Link: A valid link to their real profile (e.g., "[https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom)").
                 - Platform: Must be exactly 'Instagram' or 'TikTok'.
-                - Followers (Est): Your best historical estimate of their follower baseline (e.g., "45K", "120K", "1.2M").
-                - Engagement Rate: Provide a realistic estimate percentage or range based on their average view/like ratios (e.g., "3.4%", "5.1%", "2.8%").
+                - Followers (Est): Their approximate current follower size based on search snippets.
+                - Engagement Rate: A realistic estimate percentage or range based on active performance data.
                 - Snippet: A short explanation of why they match this specific brief.
                 """
                 
@@ -91,21 +96,18 @@ if st.session_state.discovered_creators:
     
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     
-    # Interactive dashboard layout with editable metric columns
     edited_df = st.data_editor(
         df_display,
         column_config={
             "Link": st.column_config.LinkColumn("Profile URL"),
-            "Followers (Est)": st.column_config.TextColumn("Followers (Est)", help="Double-click to edit or refine"),
-            "Engagement Rate": st.column_config.TextColumn("Engagement Rate", help="Double-click to edit or refine"),
+            "Followers (Est)": st.column_config.TextColumn("Followers (Est)"),
+            "Engagement Rate": st.column_config.TextColumn("Engagement Rate"),
         },
-        # We leave Followers and Engagement Rate UN-disabled so they are fully editable
         disabled=["Title", "Link", "Snippet", "Platform"],
         hide_index=True,
         use_container_width=True
     )
     
-    # Clean CSV Exporter Button
     csv = edited_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Export Selected Creators to CSV",
