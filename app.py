@@ -32,67 +32,103 @@ if st.button("🚀 Discover Creators", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please enter a campaign brief first!")
     else:
-        with st.spinner("🧠 AI is executing live Google Search grounding to find authentic profiles..."):
-            try:
-                # Using explicit proto mappings to prevent library dictionary parsing conflicts
-                model = genai.GenerativeModel(
+        try:
+            # --- STEP 1: DEEP LIVE WEB SEARCH WITH OPERATORS ---
+            with st.spinner("🌐 Scanning live Instagram & TikTok indexes for authentic accounts..."):
+                search_model = genai.GenerativeModel(
                     model_name="gemini-2.5-flash",
                     tools=[genai.protos.Tool(google_search=genai.protos.Tool.GoogleSearch())]
                 )
                 
-                prompt = f"""
-                You are an advanced influencer marketing research tool.
-                Analyze this campaign brief: '{campaign_brief}'.
+                search_prompt = f"""
+                Find up to 8 REAL, active, prominent UK-based individual creator profiles matching this brief: '{campaign_brief}'.
                 
-                Use live Google Search data to find up to 8 REAL, active, prominent creators on Instagram or TikTok matching this exact target audience and geographic region.
-                Do not guess or invent usernames. Every profile must correspond to an actual, live social media account indexed on the web.
+                CRITICAL INSTRUCTION:
+                You MUST use strict search queries targeting direct index profile structures, such as:
+                - site:instagram.com "keyword" "UK"
+                - site:tiktok.com "@" "keyword" "UK"
                 
-                Output the results ONLY as a valid JSON array of objects. Do not include markdown code block styling (like ```json). Start directly with the opening bracket [.
+                Only extract actual, live user profile URLs found explicitly within the search index results. Do not pull links from generic roundup blogs or agency directories. If you cannot find the direct, exact link to an individual's personal profile page, do not include them. Do not guess handles.
                 
-                Each object in the array must have exactly these keys:
-                "Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet"
-                
-                Guidelines:
-                - Title: The creator's name or main social handle (e.g., "@tech_tom").
-                - Link: A valid link to their real profile (e.g., "[https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom)").
-                - Platform: Must be exactly 'Instagram' or 'TikTok'.
-                - Followers (Est): Their approximate current follower size based on search snippets.
-                - Engagement Rate: A realistic estimate percentage or range based on active performance data.
-                - Snippet: A short explanation of why they match this specific brief.
+                For each valid creator found, record:
+                1. Their exact handle/name.
+                2. The full profile URL link.
+                3. Accurate follower and engagement data visible in the search snippet.
+                4. A brief sentence on why they fit this specific campaign.
                 """
                 
-                response = model.generate_content(prompt)
-                raw_data = response.text.strip()
+                search_response = search_model.generate_content(search_prompt)
+                raw_search_text = search_response.text
+
+            # --- STEP 2: STRUCTURED DATA EXTRACTION ---
+            with st.spinner("📊 Mapping verified profiles into your data workspace..."):
+                format_model = genai.GenerativeModel(model_name="gemini-2.5-flash")
                 
-                # Strip out accidental markdown wrapper blocks if the model adds them
-                if raw_data.startswith("```"):
-                    lines = raw_data.split("\n")
+                format_prompt = f"""
+                You are a strict data extraction assistant. Convert this raw creator research text into a valid JSON array of objects.
+                
+                Research Text:
+                {raw_search_text}
+                
+                Each object in the array must contain exactly these keys:
+                "Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet"
+                
+                Strict Rules:
+                - Link: The exact, unedited profile URL from the text.
+                - Platform: Must be exactly 'Instagram' or 'TikTok'.
+                - Followers (Est): The follower count listed (or 'N/A').
+                - Engagement Rate: The performance data listed (or 'N/A').
+                - Snippet: A brief overview of why they match.
+                
+                Output ONLY the raw JSON array starting with [ and ending with ]. Do not wrap it in markdown text.
+                """
+                
+                format_response = format_model.generate_content(format_prompt)
+                raw_json_data = format_response.text.strip()
+                
+                if raw_json_data.startswith("```"):
+                    lines = raw_json_data.split("\n")
                     if lines[0].startswith("```"):
                         lines = lines[1:]
                     if lines[-1].startswith("```"):
                         lines = lines[:-1]
-                    raw_data = "\n".join(lines).strip()
+                    raw_json_data = "\n".join(lines).strip()
+
+            if raw_json_data:
+                creators_list = json.loads(raw_json_data)
                 
-                if raw_data:
-                    creators_list = json.loads(raw_data)
-                    df_results = pd.DataFrame(creators_list)
+                # --- STEP 3: PYTHON-SIDE QUALITY GUARDRAIL ---
+                verified_list = []
+                for creator in creators_list:
+                    url = str(creator.get("Link", "")).strip().lower()
                     
-                    if not df_results.empty and "Link" in df_results.columns:
-                        st.session_state.discovered_creators = df_results.to_dict('records')
-                        st.success(f"🎉 Successfully generated {len(df_results)} creator profile matches!")
-                    else:
-                        st.warning("The system generated an empty dataset. Try providing more details in your brief.")
+                    # Ensure the URL is an absolute direct link, not a home page, search page, or hallucination
+                    is_valid_insta = "[instagram.com/](https://instagram.com/)" in url and len(url.split("[instagram.com/](https://instagram.com/)")[-1].replace("/", "")) > 0
+                    is_valid_tiktok = "[tiktok.com/](https://tiktok.com/)" in url and len(url.split("[tiktok.com/](https://tiktok.com/)")[-1].replace("/", "")) > 0
+                    
+                    if is_valid_insta or is_valid_tiktok:
+                        # Clean up trailing punctuation if the AI accidentally grabbed it from a sentence
+                        if url.endswith(".") or url.endswith(","):
+                            creator["Link"] = creator["Link"][:-1]
+                        verified_list.append(creator)
+                
+                if verified_list:
+                    df_results = pd.DataFrame(verified_list).drop_duplicates(subset=["Link"])
+                    st.session_state.discovered_creators = df_results.to_dict('records')
+                    st.success(f"🎉 Successfully verified and loaded {len(df_results)} authentic creator profiles!")
                 else:
-                    st.warning("No data returned from the workspace engine.")
-                    
-            except Exception as e:
-                st.error(f"An error occurred during discovery: {str(e)}")
+                    st.warning("Google found mentions of matching creators, but could not securely verify their direct profile URLs. Try refining your keywords.")
+            else:
+                st.warning("No data package received from the formatting array.")
+                
+        except Exception as e:
+            st.error(f"An error occurred during discovery: {str(e)}")
 
 # 4. Phase 2: Display and Export Data
 if st.session_state.discovered_creators:
     st.write("---")
     st.subheader("📋 Discovered Profiles & Data Hub")
-    st.info("💡 Tip: You can double-click directly inside the 'Followers (Est)' and 'Engagement Rate' cells to refine or update them manually before downloading!")
+    st.info("💡 Tip: You can double-click inside the 'Followers (Est)' and 'Engagement Rate' cells to manually refine details on the fly.")
     
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     
