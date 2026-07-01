@@ -37,7 +37,7 @@ if st.button("🚀 Discover Creators", type="primary"):
         with st.spinner("🧠 AI is analyzing your brief and scanning platforms..."):
             try:
                 # Use AI to generate hyper-focused search queries based on the brief
-                model = genai.GenerativeModel("gemini-1.5-flash")
+              model = genai.GenerativeModel("gemini-2.5-flash")
                 prompt = f"""
                 Analyze this influencer marketing campaign brief: '{campaign_brief}'.
                 Generate 3 distinct, highly targeted keyword search combinations wrapped in quotes to find matching creators on Instagram or TikTok via Google search indexing. 
