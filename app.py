@@ -32,7 +32,7 @@ if st.button("🚀 Discover Creators", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please enter a campaign brief first!")
     else:
-        with st.spinner("🧠 AI is analyzing your brief and compiling matching creator profiles..."):
+        with st.spinner("🧠 AI is compiling matching creator profiles and baseline metrics..."):
             try:
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
@@ -45,13 +45,15 @@ if st.button("🚀 Discover Creators", type="primary"):
                 Output the results ONLY as a valid JSON array of objects. Do not include markdown code block styling (like ```json). Start directly with the opening bracket [.
                 
                 Each object in the array must have exactly these keys:
-                "Title", "Link", "Snippet", "Platform"
+                "Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet"
                 
                 Guidelines:
                 - Title: The creator's name or main social handle (e.g., "@tech_tom").
-                - Link: A valid link to their profile (e.g., "[https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom)" or "[https://www.tiktok.com/@tech_tom](https://www.tiktok.com/@tech_tom)").
-                - Snippet: A short explanation of why they are an absolute perfect match for this specific brief.
+                - Link: A valid link to their profile (e.g., "[https://www.instagram.com/tech_tom](https://www.instagram.com/tech_tom)").
                 - Platform: Must be exactly 'Instagram' or 'TikTok'.
+                - Followers (Est): Your best historical estimate of their follower baseline (e.g., "45K", "120K", "1.2M").
+                - Engagement Rate: Provide a realistic estimate percentage or range based on their average view/like ratios (e.g., "3.4%", "5.1%", "2.8%").
+                - Snippet: A short explanation of why they match this specific brief.
                 """
                 
                 response = model.generate_content(prompt)
@@ -67,7 +69,6 @@ if st.button("🚀 Discover Creators", type="primary"):
                     raw_data = "\n".join(lines).strip()
                 
                 if raw_data:
-                    # Parse the structured JSON data safely 
                     creators_list = json.loads(raw_data)
                     df_results = pd.DataFrame(creators_list)
                     
@@ -86,21 +87,25 @@ if st.button("🚀 Discover Creators", type="primary"):
 if st.session_state.discovered_creators:
     st.write("---")
     st.subheader("📋 Discovered Profiles & Data Hub")
+    st.info("💡 Tip: You can double-click directly inside the 'Followers (Est)' and 'Engagement Rate' cells to refine or update them manually before downloading!")
     
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     
-    # Interactive dashboard layout
+    # Interactive dashboard layout with editable metric columns
     edited_df = st.data_editor(
         df_display,
         column_config={
             "Link": st.column_config.LinkColumn("Profile URL"),
+            "Followers (Est)": st.column_config.TextColumn("Followers (Est)", help="Double-click to edit or refine"),
+            "Engagement Rate": st.column_config.TextColumn("Engagement Rate", help="Double-click to edit or refine"),
         },
+        # We leave Followers and Engagement Rate UN-disabled so they are fully editable
         disabled=["Title", "Link", "Snippet", "Platform"],
         hide_index=True,
         use_container_width=True
     )
     
-    # Clean CSV Exporter Button for the user UI
+    # Clean CSV Exporter Button
     csv = edited_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Export Selected Creators to CSV",
