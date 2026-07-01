@@ -34,10 +34,10 @@ if st.button("🚀 Discover Creators", type="primary"):
     else:
         with st.spinner("🧠 AI is executing live Google Search grounding to find authentic profiles..."):
             try:
-                # Activating Google's native live-search index tool
+                # Activating Google's updated native live-search engine tool mapping
                 model = genai.GenerativeModel(
                     model_name="gemini-2.5-flash",
-                    tools=[{"google_search_retrieval": {}}]
+                    tools=[{"google_search": {}}]
                 )
                 
                 prompt = f"""
