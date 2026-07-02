@@ -11,16 +11,13 @@ st.set_page_config(page_title="Creator Tree", page_icon="🌳", layout="wide", i
 
 st.markdown("""
     <style>
-    /* Hide default Streamlit chrome for a native app feel */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Deep dark aesthetic with Inter font */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
     .stApp { background-color: #050505; color: #ededed; font-family: 'Inter', sans-serif; }
     
-    /* Gradient Typography */
     .gradient-text {
         background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -29,7 +26,6 @@ st.markdown("""
     .sub-text { color: #8b949e; font-size: 1.1rem; margin-bottom: 2rem; }
     .gina-nod { color: #8b949e; font-style: italic; opacity: 0.8; }
     
-    /* Glassmorphism Workspace Card */
     .glass-card {
         background: rgba(20, 20, 25, 0.4);
         backdrop-filter: blur(16px);
@@ -39,7 +35,6 @@ st.markdown("""
         box-shadow: 0 10px 40px rgba(0,0,0,0.5);
     }
     
-    /* Input Styling */
     .stTextArea textarea, .stTextInput input {
         background-color: rgba(10, 10, 12, 0.8) !important; color: #e6edf3 !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 10px !important;
@@ -49,7 +44,6 @@ st.markdown("""
         border-color: #4facfe !important; box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.2) !important;
     }
     
-    /* Premium Glowing Button */
     div.stButton > button:first-child {
         background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%) !important;
         color: #000000 !important; border: none !important;
@@ -66,14 +60,12 @@ st.markdown("""
 st.markdown('<div class="gradient-text">Creator Tree</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-text">Creator search. <span class="gina-nod">Built for Gina—with a little ginger magic. ✨</span></div>', unsafe_allow_html=True)
 
-# 2. Securely fetch API Keys
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception:
     st.error("🔑 Missing Gemini API Key in Streamlit Secrets.")
     st.stop()
 
-# 3. Phase 1: Context Input Hub
 st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
 col1, col2 = st.columns(2)
 
@@ -91,7 +83,6 @@ with col2:
         height=120
     )
 
-# Advanced Tuning Expander
 with st.expander("⚙️ Advanced Search Tuning", expanded=True):
     param_col1, param_col2, param_col3 = st.columns(3)
     with param_col1:
@@ -103,7 +94,6 @@ with st.expander("⚙️ Advanced Search Tuning", expanded=True):
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# State Management
 if "discovered_creators" not in st.session_state:
     st.session_state.discovered_creators = []
 if "show_animation" not in st.session_state:
@@ -141,9 +131,10 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                         
                     for attempt in range(3):
                         try:
+                            # Search query engineered to demand structural profile metrics
                             search_response = client.models.generate_content(
                                 model='gemini-2.5-flash',
-                                contents=f"Find individual {platform_str} profile web pages in the UK matching: {query}. {follower_str} Provide exact names and exact follower counts if visible.",
+                                contents=f"Find individual {platform_str} profile web pages in the UK matching: {query}. {follower_str} CRITICAL: Provide their exact follower count, exact following count, and exact total number of posts if visible on the page.",
                                 config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())], temperature=0.3)
                             )
                             
@@ -163,7 +154,8 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                                             is_tiktok = "TikTok" in selected_platforms and "tiktok.com" in url_lower
                                             
                                             if (is_insta or is_tiktok) and not any(x in url_lower for x in ["/p/", "/tag/", "/explore/", "directory", "search", "login"]):
-                                                cleaned_url = url.strip(".,;:()[]{}'\"")
+                                                # Extreme URL normalization to prevent matching errors
+                                                cleaned_url = url.split('?')[0].strip(".,;:()[]{}'\"/")
                                                 if cleaned_url not in raw_verified_dict:
                                                     raw_verified_dict[cleaned_url] = {"url": cleaned_url, "title": title}
                             break
@@ -185,7 +177,7 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                         is_tiktok = "TikTok" in selected_platforms and "tiktok.com" in link_lower
                         
                         if (is_insta or is_tiktok) and not any(x in link_lower for x in ["/p/", "/tag/", "/explore/", "directory", "search", "login"]):
-                            cleaned_link = link.strip(".,;:()[]{}'\"")
+                            cleaned_link = link.split('?')[0].strip(".,;:()[]{}'\"/")
                             if cleaned_link not in raw_verified_dict:
                                 raw_verified_dict[cleaned_link] = {"url": cleaned_link, "title": "Discovered Creator"}
 
@@ -193,18 +185,20 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
             
             if source_pool:
                 with st.spinner(f"⚡ Synthesizing {len(source_pool)} verified data nodes (Target: {profile_count})..."):
+                    clean_source_urls = [item['url'] for item in source_pool]
+                    
                     format_prompt = f"""
                     You are a strict data parser. Review this exact text log:
                     ---
                     {aggregated_search_text}
                     ---
-                    Extract metrics ONLY for these {len(source_pool)} verified links: {json.dumps(source_pool)}
+                    Extract metrics ONLY for these verified URLs: {json.dumps(clean_source_urls)}
                     
                     CRITICAL HALLUCINATION OVERRIDE RULES:
-                    1. For "Followers (Est)": You may ONLY write a number if that exact follower count is physically written in the text log provided above. 
-                    2. If the text log DOES NOT explicitly state their follower count, you MUST output exactly "N/A". Do not guess. Do not estimate.
+                    1. For "Followers (Est)", "Following Count", and "Total Posts": You may ONLY write a number if that exact metric is physically written in the text log.
+                    2. If the text log DOES NOT explicitly state the number, you MUST output exactly "N/A (Manual Entry)". Do not guess. Do not estimate.
                     
-                    Format as a JSON array of objects with keys: "Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet".
+                    Format as a JSON array of objects with keys: "Title", "Link", "Platform", "Followers (Est)", "Following Count", "Total Posts", "Snippet".
                     """
                     
                     for attempt in range(3):
@@ -212,7 +206,7 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                             format_response = client.models.generate_content(
                                 model='gemini-2.5-flash',
                                 contents=format_prompt,
-                                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0) # Absolute zero temperature
+                                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0) 
                             )
                             raw_json_data = format_response.text.strip() if format_response.text else ""
                             break
@@ -240,20 +234,20 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                             if not isinstance(item, dict):
                                 continue
                             
-                            url = str(item.get("Link", item.get("link", item.get("url", "")))).strip()
+                            url = str(item.get("Link", item.get("link", item.get("url", "")))).split('?')[0].strip(".,;:()[]{}'\"/")
                             url_lower = url.lower()
                             
                             is_insta = "instagram.com" in url_lower
                             is_tiktok = "tiktok.com" in url_lower
                             
                             if is_insta or is_tiktok:
-                                url = url.strip(".,;:()[]{}'\"")
                                 normalized_item = {
                                     "Title": str(item.get("Title", item.get("title", "@Profile"))),
                                     "Link": url,
                                     "Platform": "Instagram" if is_insta else "TikTok",
-                                    "Followers (Est)": str(item.get("Followers (Est)", "N/A")),
-                                    "Engagement Rate": str(item.get("Engagement Rate", "N/A")),
+                                    "Followers (Est)": str(item.get("Followers (Est)", "N/A (Manual Entry)")),
+                                    "Following Count": str(item.get("Following Count", "N/A (Manual Entry)")),
+                                    "Total Posts": str(item.get("Total Posts", "N/A (Manual Entry)")),
                                     "Snippet": str(item.get("Snippet", "Verified entity."))
                                 }
                                 normalized_list.append(normalized_item)
@@ -262,7 +256,6 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                         df_results = pd.DataFrame(normalized_list).drop_duplicates(subset=["Link"]).head(profile_count)
                         st.session_state.discovered_creators = df_results.to_dict('records')
                         
-                        # Trigger Peter Pan Animation
                         st.session_state.show_animation = True
                         
                         if len(df_results) < profile_count:
@@ -275,9 +268,8 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                 st.warning("No direct live profile links captured. Broaden campaign terms.")
                 
         except Exception as e:
-            st.error("Engine sequence interrupted. Please re-initialize.")
+            st.error(f"Engine sequence interrupted. Error: {str(e)}")
 
-# Animation Injection
 if st.session_state.show_animation:
     st.markdown("""
         <style>
@@ -302,15 +294,14 @@ if st.session_state.show_animation:
         </style>
         <div class="pan-fairy">🧚‍♂️✨☁️</div>
     """, unsafe_allow_html=True)
-    st.session_state.show_animation = False # Prevents it from looping on every click
+    st.session_state.show_animation = False 
 
-# 4. Phase 2: Interactive Data Workspace
 if st.session_state.discovered_creators:
     st.write("---")
     st.markdown("### 📊 Creator Report")
     
     df_display = pd.DataFrame(st.session_state.discovered_creators)
-    cols = ["Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet"]
+    cols = ["Title", "Link", "Platform", "Followers (Est)", "Following Count", "Total Posts", "Snippet"]
     df_display = df_display.reindex(columns=[c for c in cols if c in df_display.columns])
 
     edited_df = st.data_editor(
@@ -318,7 +309,8 @@ if st.session_state.discovered_creators:
         column_config={
             "Link": st.column_config.LinkColumn("Profile URL"),
             "Followers (Est)": st.column_config.TextColumn("Followers (Est)"),
-            "Engagement Rate": st.column_config.TextColumn("Engagement Rate"),
+            "Following Count": st.column_config.TextColumn("Following Count (BS Detector)"),
+            "Total Posts": st.column_config.TextColumn("Total Posts (Dedication Check)"),
         },
         disabled=["Title", "Link", "Platform", "Snippet"],
         hide_index=True,
