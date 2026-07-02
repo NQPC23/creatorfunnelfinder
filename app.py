@@ -7,7 +7,7 @@ import time
 import re
 
 # 1. Page Configuration & Elite Startup Stylesheet
-st.set_page_config(page_title="Create a Tree", page_icon="🌳", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Creator Tree", page_icon="🌳", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
@@ -63,7 +63,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="gradient-text">Create a Tree</div>', unsafe_allow_html=True)
+st.markdown('<div class="gradient-text">Creator Tree</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-text">Creator search. <span class="gina-nod">Built for Gina—with a little ginger magic. ✨</span></div>', unsafe_allow_html=True)
 
 # 2. Securely fetch API Keys
