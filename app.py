@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 import pandas as pd
 import json
+import time  # Added for automatic server retry delays
 
 # 1. Page Configuration
 st.set_page_config(page_title="Creator Funnel Finder", page_icon="🔍", layout="wide")
@@ -42,7 +43,7 @@ if st.button("🚀 Discover Matched Creators", type="primary"):
         st.warning("Please provide a campaign goal first!")
     else:
         try:
-            # --- STAGE 1: UNCONSTRAINED LIVE SEARCH GROUNDING ---
+            # --- STAGE 1: LIVE SEARCH GROUNDING WITH AUTO-RETRY ---
             with st.spinner("🌐 Crawling live Google Search indexes for matching creators..."):
                 search_prompt = f"""
                 Perform a live Google search to locate up to 8 real, active, individual UK-based creator profiles on Instagram or TikTok who align with this setup:
@@ -53,17 +54,28 @@ if st.button("🚀 Discover Matched Creators", type="primary"):
                 Identify their handles, exact clickable links, approximate follower sizes from snippets, and why they fit. Do not make up profiles.
                 """
                 
-                search_response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=search_prompt,
-                    config=types.GenerateContentConfig(
-                        tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.3
-                    )
-                )
-                raw_search_text = search_response.text if search_response.text else ""
+                raw_search_text = ""
+                # Attempt to connect to Google up to 3 times if a 503 traffic spike happens
+                for attempt in range(3):
+                    try:
+                        search_response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=search_prompt,
+                            config=types.GenerateContentConfig(
+                                tools=[types.Tool(google_search=types.GoogleSearch())],
+                                temperature=0.3
+                            )
+                        )
+                        raw_search_text = search_response.text if search_response.text else ""
+                        break  # Success! Exit the retry loop.
+                    except Exception as e:
+                        if "503" in str(e) and attempt < 2:
+                            time.sleep(2)  # Wait 2 seconds for traffic to clear
+                            continue
+                        else:
+                            raise e  # If it's a different error or we ran out of retries, pass it along
 
-            # --- STAGE 2: NATIVE STRUCTURED JSON EXTRACTION ---
+            # --- STAGE 2: NATIVE STRUCTURED JSON EXTRACTION WITH AUTO-RETRY ---
             if raw_search_text:
                 with st.spinner("📊 Structuring verified profiles into your data workspace..."):
                     format_prompt = f"""
@@ -80,27 +92,35 @@ if st.button("🚀 Discover Matched Creators", type="primary"):
                     "Snippet": Brief rationale on why they match this specific client brief
                     """
                     
-                    format_response = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=format_prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            temperature=0.1
-                        )
-                    )
-                    raw_json_data = format_response.text.strip() if format_response.text else ""
+                    raw_json_data = ""
+                    for attempt in range(3):
+                        try:
+                            format_response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=format_prompt,
+                                config=types.GenerateContentConfig(
+                                    response_mime_type="application/json",
+                                    temperature=0.1
+                                )
+                            )
+                            raw_json_data = format_response.text.strip() if format_response.text else ""
+                            break  # Success!
+                        except Exception as e:
+                            if "503" in str(e) and attempt < 2:
+                                time.sleep(2)
+                                continue
+                            else:
+                                raise e
                     
                     if raw_json_data:
                         raw_creators_list = json.loads(raw_json_data)
                         
-                        # Case-Insensitive Normalization Guardrail
                         normalized_list = []
                         for item in raw_creators_list:
                             url = str(item.get("Link", item.get("link", item.get("url", "")))).strip()
                             url_lower = url.lower()
                             
                             if "instagram.com" in url_lower or "tiktok.com" in url_lower:
-                                # Clean off trailing punctuation from text clipping
                                 if url.endswith(".") or url.endswith(","):
                                     url = url[:-1]
                                     
