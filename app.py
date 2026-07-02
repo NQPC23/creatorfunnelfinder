@@ -109,7 +109,7 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
         follower_str = f" Ensure they fall in the follower range of: {follower_target}." if follower_target.strip() else ""
         
         try:
-            with st.spinner(f"🌐 Aggressively traversing index to hit exact quota of {profile_count} creators..."):
+            with st.spinner(f"🌐 Pacing index sweeps to respect API speed limits (Target: {profile_count} creators)..."):
                 query_count = max(8, (profile_count // 5) + 3)
                 
                 query_generation_prompt = f"""
@@ -131,7 +131,6 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                         
                     for attempt in range(3):
                         try:
-                            # Search query engineered to demand structural profile metrics
                             search_response = client.models.generate_content(
                                 model='gemini-2.5-flash',
                                 contents=f"Find individual {platform_str} profile web pages in the UK matching: {query}. {follower_str} CRITICAL: Provide their exact follower count, exact following count, and exact total number of posts if visible on the page.",
@@ -154,17 +153,20 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                                             is_tiktok = "TikTok" in selected_platforms and "tiktok.com" in url_lower
                                             
                                             if (is_insta or is_tiktok) and not any(x in url_lower for x in ["/p/", "/tag/", "/explore/", "directory", "search", "login"]):
-                                                # Extreme URL normalization to prevent matching errors
                                                 cleaned_url = url.split('?')[0].strip(".,;:()[]{}'\"/")
                                                 if cleaned_url not in raw_verified_dict:
                                                     raw_verified_dict[cleaned_url] = {"url": cleaned_url, "title": title}
                             break
                         except Exception as e:
-                            if "503" in str(e) and attempt < 2:
-                                time.sleep(2 ** attempt)
+                            # Modified to catch the 429 Speed Limit Error
+                            if ("503" in str(e) or "429" in str(e)) and attempt < 2:
+                                time.sleep(5 + (2 ** attempt)) # Force a longer wait if we hit a speed bump
                                 continue
                             else:
                                 break
+                    
+                    # Mandatory 4-second pace limit to keep the Free Tier API happy
+                    time.sleep(4)
 
                 if aggregated_search_text and len(raw_verified_dict) < profile_count:
                     found_urls = re.findall(r'(https?://[^\s()<>\"\']+)', aggregated_search_text)
@@ -203,6 +205,7 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                     
                     for attempt in range(3):
                         try:
+                            time.sleep(2) # Added a small delay before the final formatting to ensure clean processing
                             format_response = client.models.generate_content(
                                 model='gemini-2.5-flash',
                                 contents=format_prompt,
@@ -211,8 +214,8 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                             raw_json_data = format_response.text.strip() if format_response.text else ""
                             break
                         except Exception as e:
-                            if "503" in str(e) and attempt < 2:
-                                time.sleep(2 ** attempt)
+                            if ("503" in str(e) or "429" in str(e)) and attempt < 2:
+                                time.sleep(5 + (2 ** attempt))
                                 continue
                             else:
                                 raw_json_data = ""
