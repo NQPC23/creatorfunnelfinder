@@ -40,12 +40,12 @@ st.markdown("""
     }
     
     /* Input Styling */
-    .stTextArea textarea {
+    .stTextArea textarea, .stTextInput input {
         background-color: rgba(10, 10, 12, 0.8) !important; color: #e6edf3 !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 10px !important;
         font-size: 14px; transition: all 0.3s ease;
     }
-    .stTextArea textarea:focus {
+    .stTextArea textarea:focus, .stTextInput input:focus {
         border-color: #4facfe !important; box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.2) !important;
     }
     
@@ -92,17 +92,22 @@ with col2:
     )
 
 # Advanced Tuning Expander
-with st.expander("⚙️ Advanced Search Tuning"):
-    param_col1, param_col2 = st.columns(2)
+with st.expander("⚙️ Advanced Search Tuning", expanded=True):
+    param_col1, param_col2, param_col3 = st.columns(3)
     with param_col1:
         profile_count = st.slider("Maximum Profiles to Target", min_value=5, max_value=150, value=20, step=5)
     with param_col2:
         selected_platforms = st.multiselect("Target Networks", options=["Instagram", "TikTok"], default=["Instagram", "TikTok"])
+    with param_col3:
+        follower_target = st.text_input("👥 Target Follower Range", placeholder="e.g., 10K - 50K")
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# State Management
 if "discovered_creators" not in st.session_state:
     st.session_state.discovered_creators = []
+if "show_animation" not in st.session_state:
+    st.session_state.show_animation = False
 
 if st.button("🚀 Initialize Discovery Engine", type="primary"):
     if not campaign_brief.strip():
@@ -111,30 +116,34 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
         st.warning("Please select at least one target social platform.")
     else:
         platform_str = " and ".join(selected_platforms) if len(selected_platforms) == 2 else f"exclusively {selected_platforms[0]}"
+        follower_str = f" Ensure they fall in the follower range of: {follower_target}." if follower_target.strip() else ""
         
         try:
-            with st.spinner("🌐 Traversing live global metadata index..."):
-                iterations = 1 if profile_count <= 15 else (2 if profile_count <= 50 else 3)
+            with st.spinner(f"🌐 Aggressively traversing index to hit exact quota of {profile_count} creators..."):
+                query_count = max(8, (profile_count // 5) + 3)
                 
                 query_generation_prompt = f"""
-                Based on this brand context: '{brand_context}' and campaign target: '{campaign_brief}', write exactly {iterations} distinct, plain-English search phrases designed to find individual, real UK-based creators on {platform_str}.
+                Based on brand context: '{brand_context}' and campaign target: '{campaign_brief}', write exactly {query_count} highly distinct, plain-English search phrases designed to find individual, real UK-based creators on {platform_str}.{follower_str}
                 Output ONLY the raw search phrases, one per line. No quotes.
                 """
                 query_res = client.models.generate_content(model='gemini-2.5-flash', contents=query_generation_prompt)
-                search_queries = [q.strip() for q in query_res.text.split("\n") if q.strip()][:iterations]
+                search_queries = [q.strip() for q in query_res.text.split("\n") if q.strip()][:query_count]
                 
                 if not search_queries:
-                    search_queries = [f"UK {platform_str} creators for {campaign_brief}"]
+                    search_queries = [f"UK {platform_str} creators {follower_target} {campaign_brief}"]
 
                 aggregated_search_text = ""
-                raw_verified_links = []
+                raw_verified_dict = {} 
                 
                 for query in search_queries:
+                    if len(raw_verified_dict) >= profile_count:
+                        break 
+                        
                     for attempt in range(3):
                         try:
                             search_response = client.models.generate_content(
                                 model='gemini-2.5-flash',
-                                contents=f"Find individual {platform_str} profile web pages in the UK matching: {query}. Provide their names and follower sizes if mentioned.",
+                                contents=f"Find individual {platform_str} profile web pages in the UK matching: {query}. {follower_str} Provide exact names and exact follower counts if visible.",
                                 config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())], temperature=0.3)
                             )
                             
@@ -154,7 +163,9 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                                             is_tiktok = "TikTok" in selected_platforms and "tiktok.com" in url_lower
                                             
                                             if (is_insta or is_tiktok) and not any(x in url_lower for x in ["/p/", "/tag/", "/explore/", "directory", "search", "login"]):
-                                                raw_verified_links.append({"url": url, "title": title})
+                                                cleaned_url = url.strip(".,;:()[]{}'\"")
+                                                if cleaned_url not in raw_verified_dict:
+                                                    raw_verified_dict[cleaned_url] = {"url": cleaned_url, "title": title}
                             break
                         except Exception as e:
                             if "503" in str(e) and attempt < 2:
@@ -163,28 +174,36 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                             else:
                                 break
 
-                if aggregated_search_text:
+                if aggregated_search_text and len(raw_verified_dict) < profile_count:
                     found_urls = re.findall(r'(https?://[^\s()<>\"\']+)', aggregated_search_text)
                     for link in found_urls:
+                        if len(raw_verified_dict) >= profile_count:
+                            break
+                            
                         link_lower = link.lower()
                         is_insta = "Instagram" in selected_platforms and "instagram.com" in link_lower
                         is_tiktok = "TikTok" in selected_platforms and "tiktok.com" in link_lower
                         
                         if (is_insta or is_tiktok) and not any(x in link_lower for x in ["/p/", "/tag/", "/explore/", "directory", "search", "login"]):
                             cleaned_link = link.strip(".,;:()[]{}'\"")
-                            raw_verified_links.append({"url": cleaned_link, "title": "Discovered Creator"})
+                            if cleaned_link not in raw_verified_dict:
+                                raw_verified_dict[cleaned_link] = {"url": cleaned_link, "title": "Discovered Creator"}
 
-            if raw_verified_links:
-                unique_sources = {v['url']: v for v in raw_verified_links}.values()
-                source_pool = list(unique_sources)[:profile_count]
-                
-                with st.spinner(f"⚡ Synthesizing {len(source_pool)} verified data nodes..."):
+            source_pool = list(raw_verified_dict.values())[:profile_count]
+            
+            if source_pool:
+                with st.spinner(f"⚡ Synthesizing {len(source_pool)} verified data nodes (Target: {profile_count})..."):
                     format_prompt = f"""
-                    You are a strict data parser. Log:
+                    You are a strict data parser. Review this exact text log:
                     ---
                     {aggregated_search_text}
                     ---
-                    Extract metrics ONLY for these verified links: {json.dumps(source_pool)}
+                    Extract metrics ONLY for these {len(source_pool)} verified links: {json.dumps(source_pool)}
+                    
+                    CRITICAL HALLUCINATION OVERRIDE RULES:
+                    1. For "Followers (Est)": You may ONLY write a number if that exact follower count is physically written in the text log provided above. 
+                    2. If the text log DOES NOT explicitly state their follower count, you MUST output exactly "N/A". Do not guess. Do not estimate.
+                    
                     Format as a JSON array of objects with keys: "Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet".
                     """
                     
@@ -193,7 +212,7 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                             format_response = client.models.generate_content(
                                 model='gemini-2.5-flash',
                                 contents=format_prompt,
-                                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.1)
+                                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0) # Absolute zero temperature
                             )
                             raw_json_data = format_response.text.strip() if format_response.text else ""
                             break
@@ -240,9 +259,16 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                                 normalized_list.append(normalized_item)
                     
                     if normalized_list:
-                        df_results = pd.DataFrame(normalized_list).drop_duplicates(subset=["Link"])
+                        df_results = pd.DataFrame(normalized_list).drop_duplicates(subset=["Link"]).head(profile_count)
                         st.session_state.discovered_creators = df_results.to_dict('records')
-                        st.toast('Extraction sequence complete.', icon='✅')
+                        
+                        # Trigger Peter Pan Animation
+                        st.session_state.show_animation = True
+                        
+                        if len(df_results) < profile_count:
+                            st.toast(f'Found {len(df_results)} profiles. Maxed out niche footprint!', icon='⚠️')
+                        else:
+                            st.toast(f'Quota hit! Loaded exactly {len(df_results)} profiles.', icon='✅')
                     else:
                         st.warning("Data footprints located, but clean entity routing failed. Adjust parameters.")
             else:
@@ -251,10 +277,37 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
         except Exception as e:
             st.error("Engine sequence interrupted. Please re-initialize.")
 
+# Animation Injection
+if st.session_state.show_animation:
+    st.markdown("""
+        <style>
+        @keyframes flyPan {
+            0% { transform: translate(-10vw, 30vh) scale(1) rotate(0deg); opacity: 1; }
+            20% { transform: translate(25vw, 15vh) scale(1.3) rotate(-10deg); }
+            40% { transform: translate(50vw, 35vh) scale(1.6) rotate(10deg); }
+            60% { transform: translate(75vw, 10vh) scale(1.3) rotate(-15deg); }
+            80% { transform: translate(90vw, 20vh) scale(1) rotate(5deg); opacity: 0.8; }
+            100% { transform: translate(110vw, -10vh) scale(0.8) rotate(0deg); opacity: 0; }
+        }
+        .pan-fairy {
+            position: fixed;
+            top: 30%;
+            left: 0;
+            font-size: 80px;
+            pointer-events: none;
+            animation: flyPan 3.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+            z-index: 99999;
+            filter: drop-shadow(0px 0px 15px rgba(255,215,0,0.8));
+        }
+        </style>
+        <div class="pan-fairy">🧚‍♂️✨☁️</div>
+    """, unsafe_allow_html=True)
+    st.session_state.show_animation = False # Prevents it from looping on every click
+
 # 4. Phase 2: Interactive Data Workspace
 if st.session_state.discovered_creators:
     st.write("---")
-    st.markdown("### 📊 Intelligence Matrix")
+    st.markdown("### 📊 Creator Report")
     
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     cols = ["Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet"]
@@ -274,8 +327,8 @@ if st.session_state.discovered_creators:
     
     csv = edited_df.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="📥 Download Matrix (CSV)",
+        label="📥 Download Creator Report (CSV)",
         data=csv,
-        file_name="intelligence_matrix.csv",
+        file_name="creator_report.csv",
         mime="text/csv",
     )
