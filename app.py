@@ -41,76 +41,92 @@ if st.button("🚀 Discover Matched Creators", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please provide a campaign goal first!")
     else:
-        with st.spinner("🌐 Analyzing brand dynamics and crawling live Google Search indexes..."):
-            try:
-                # Upgraded macro prompt combining brand filters and search-snippet tracking
-                prompt = f"""
-                You are an enterprise influencer marketing research engine.
+        try:
+            # --- STAGE 1: UNCONSTRAINED LIVE SEARCH GROUNDING ---
+            with st.spinner("🌐 Crawling live Google Search indexes for matching creators..."):
+                search_prompt = f"""
+                Perform a live Google search to locate up to 8 real, active, individual UK-based creator profiles on Instagram or TikTok who align with this setup:
                 
-                CRITICAL TARGET INPUTS:
-                - Brand Identity Context: {brand_context if brand_context.strip() else 'Generic Tech/Creative Brand'}
-                - Campaign Strategy Brief: {campaign_brief}
+                Brand Identity: {brand_context if brand_context.strip() else 'Generic AI/Tech Startup'}
+                Campaign Strategy: {campaign_brief}
                 
-                INSTRUCTIONS:
-                1. Use live Google Search data to find up to 8 REAL, active, prominent individual UK-based creators on Instagram or TikTok who are an absolute perfect thematic match for BOTH the brand identity and the campaign strategy.
-                2. Do not invent or guess usernames. Every profile must be an authentic, live link currently indexed on the web.
-                3. Inspect the search snippets carefully to locate actual follower numbers.
-                4. Estimate a highly accurate engagement rate benchmark based on their tier, content activity, and the respective platform averages.
-                
-                Output the results ONLY as a valid JSON array of objects. Do not include markdown code block styling (like ```json). Start directly with the opening bracket [.
-                
-                Columns required:
-                "Title", "Link", "Platform", "Followers (Est)", "Engagement Rate", "Snippet"
-                
-                Guidelines:
-                - Title: The handle/name (e.g., "@creative_mind").
-                - Link: The direct, unedited social profile URL.
-                - Platform: Must be exactly 'Instagram' or 'TikTok'.
-                - Followers (Est): Exact count parsed from the google meta snippet (e.g., "42.5K", "120K").
-                - Engagement Rate: A realistic percentage benchmark based on industry standards for their follower size (e.g., "4.2%", "2.1%").
-                - Snippet: A clear explanation explaining exactly why this creator fits this specific Brand Context and Campaign Brief.
+                Identify their handles, exact clickable links, approximate follower sizes from snippets, and why they fit. Do not make up profiles.
                 """
                 
-                response = client.models.generate_content(
+                search_response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=prompt,
+                    contents=search_prompt,
                     config=types.GenerateContentConfig(
                         tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.15  # Locked down low to prioritize accuracy over creative wandering
+                        temperature=0.3
                     )
                 )
-                
-                raw_data = response.text.strip() if response.text else ""
-                
-                if raw_data.startswith("```"):
-                    lines = raw_data.split("\n")
-                    if lines[0].startswith("```"): lines = lines[1:]
-                    if lines[-1].startswith("```"): lines = lines[:-1]
-                    raw_data = "\n".join(lines).strip()
-                
-                if raw_data:
-                    creators_list = json.loads(raw_data)
+                raw_search_text = search_response.text if search_response.text else ""
+
+            # --- STAGE 2: NATIVE STRUCTURED JSON EXTRACTION ---
+            if raw_search_text:
+                with st.spinner("📊 Structuring verified profiles into your data workspace..."):
+                    format_prompt = f"""
+                    Extract the creator profile details from this raw research text into a clean JSON array of objects:
                     
-                    # Strict validation routing pass
-                    verified_list = []
-                    for creator in creators_list:
-                        url = str(creator.get("Link", "")).strip().lower()
-                        if "instagram.com" in url or "tiktok.com" in url:
-                            if creator["Link"].endswith(".") or creator["Link"].endswith(","):
-                                creator["Link"] = creator["Link"][:-1]
-                            verified_list.append(creator)
+                    {raw_search_text}
                     
-                    if verified_list:
-                        df_results = pd.DataFrame(verified_list).drop_duplicates(subset=["Link"])
-                        st.session_state.discovered_creators = df_results.to_dict('records')
-                        st.success(f"🎉 Successfully verified and matched {len(df_results)} creator profiles!")
+                    Each object must follow this structure layout:
+                    "Title": Name or social handle
+                    "Link": Unedited profile URL page
+                    "Platform": Must be exactly 'Instagram' or 'TikTok'
+                    "Followers (Est)": Follower metrics noted in text or 'N/A'
+                    "Engagement Rate": Estimated performance tier metric or 'N/A'
+                    "Snippet": Brief rationale on why they match this specific client brief
+                    """
+                    
+                    format_response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=format_prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=0.1
+                        )
+                    )
+                    raw_json_data = format_response.text.strip() if format_response.text else ""
+                    
+                    if raw_json_data:
+                        raw_creators_list = json.loads(raw_json_data)
+                        
+                        # Case-Insensitive Normalization Guardrail
+                        normalized_list = []
+                        for item in raw_creators_list:
+                            url = str(item.get("Link", item.get("link", item.get("url", "")))).strip()
+                            url_lower = url.lower()
+                            
+                            if "instagram.com" in url_lower or "tiktok.com" in url_lower:
+                                # Clean off trailing punctuation from text clipping
+                                if url.endswith(".") or url.endswith(","):
+                                    url = url[:-1]
+                                    
+                                normalized_item = {
+                                    "Title": item.get("Title", item.get("title", item.get("handle", "@SocialProfile"))),
+                                    "Link": url,
+                                    "Platform": item.get("Platform", item.get("platform", "Instagram" if "instagram" in url_lower else "TikTok")),
+                                    "Followers (Est)": item.get("Followers (Est)", item.get("followers", item.get("Followers", "N/A"))),
+                                    "Engagement Rate": item.get("Engagement Rate", item.get("engagement", item.get("Engagement", "N/A"))),
+                                    "Snippet": item.get("Snippet", item.get("snippet", item.get("description", "Live search match.")))
+                                }
+                                normalized_list.append(normalized_item)
+                        
+                        if normalized_list:
+                            df_results = pd.DataFrame(normalized_list).drop_duplicates(subset=["Link"])
+                            st.session_state.discovered_creators = df_results.to_dict('records')
+                            st.success(f"🎉 Successfully verified and loaded {len(df_results)} creator profiles!")
+                        else:
+                            st.warning("Google found data for this niche, but could not isolate direct user profile links. Try using slightly broader terms.")
                     else:
-                        st.warning("Google tracked conversations for this niche, but couldn't verify direct profile URLs. Try broadening the text strings.")
-                else:
-                    st.warning("No data returned from the workspace engine.")
+                        st.error("The formatting engine encountered an extraction failure.")
+            else:
+                st.warning("No foundational search data was returned by the initial crawl. Try adjusting your search query words.")
                     
-            except Exception as e:
-                st.error(f"An error occurred during discovery: {str(e)}")
+        except Exception as e:
+            st.error(f"An error occurred during discovery: {str(e)}")
 
 # 4. Phase 2: Interactive Data Workspace Hub
 if st.session_state.discovered_creators:
@@ -132,7 +148,7 @@ if st.session_state.discovered_creators:
         },
         disabled=["Title", "Link", "Platform", "Snippet"],
         hide_index=True,
-        use_container_width=True
+        width="stretch"
     )
     
     csv = edited_df.to_csv(index=False).encode('utf-8')
