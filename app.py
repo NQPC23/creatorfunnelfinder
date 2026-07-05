@@ -5,7 +5,7 @@ import pandas as pd
 import json
 import re
 
-# 1. Page Configuration & Layout Customization
+# 1. Page Configuration & Aesthetic Stylesheet
 st.set_page_config(page_title="Creator Tree", page_icon="🌳", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -48,11 +48,14 @@ with col1:
 with col2:
     campaign_brief = st.text_area("🎯 Campaign Goal & Creator Profile", height=120)
 
+# Restored: Full Platform Specification matrix control panel
 with st.expander("⚙️ Advanced Tuning", expanded=True):
-    param_col1, param_col2 = st.columns(2)
+    param_col1, param_col2, param_col3 = st.columns(3)
     with param_col1:
         profile_count = st.slider("Profiles to Target", min_value=5, max_value=50, value=20, step=5)
     with param_col2:
+        selected_platforms = st.multiselect("Target Networks", options=["Instagram", "TikTok"], default=["Instagram", "TikTok"])
+    with param_col3:
         follower_target = st.text_input("👥 Target Follower Range", placeholder="e.g., 10K - 50K")
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -70,7 +73,6 @@ def parse_markdown_table(markdown_text):
     rows = []
     
     for line in table_lines[1:]:
-        # Skip standard markdown layout separator rows
         if '-' in line and line.count('-') > 3:
             continue
         cells = [cell.strip() for cell in line.split('|')[1:-1]]
@@ -84,24 +86,28 @@ def parse_markdown_table(markdown_text):
 if st.button("🚀 Initialize Discovery Engine", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please provide a campaign goal first.")
+    elif not selected_platforms:
+        st.warning("Please select at least one target social platform network.")
     else:
         with st.status("Performing deep search matrix compilation...", expanded=True) as status:
+            platforms_str = " or ".join(selected_platforms)
             mega_prompt = f"""
             Act as an elite influencer sourcing agent.
             Brand Identity: {brand_context}
             Campaign Goal: {campaign_brief}
+            Target Platforms: Only search for profiles on {platforms_str}
             Target Follower Size: {follower_target}
             Requested Count: Exactly {profile_count} individual creators.
             
             OPERATIONAL STRATEGY:
-            1. Use your integrated Google Search tool to search for UK blogs, listicles, directories, and social footprints containing creators in this space.
+            1. Use your integrated Google Search tool to search for UK blogs, listicles, directories, and social footprints containing creators on {platforms_str} matching this domain space.
             2. Do not just look at the top-level search links. Extract the names/handles of individual creators featured INSIDE those lists, roundups, and articles.
             3. For every single creator identified, pull or construct their direct absolute profile URL link (e.g., https://www.instagram.com/username or https://www.tiktok.com/@username). Never output short-text links like [Profile].
             4. You MUST keep compiling unique individual profiles until you reach a total list of {profile_count} distinct creators. Do not stop early.
-            5. Present the final list strictly as a standard Markdown table using this exact layout:
-            | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Following Count | Total Posts |
+            5. Present the final list strictly as a standard Markdown table using this exact layout (Notice: Following Count has been explicitly removed):
+            | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Total Posts |
             
-            6. For metrics like Following Count and Total Posts, extract them if explicitly available; if not visible in search footprints, write "N/A (Manual Check)". Do not invent digits. Provide ONLY the table structure. Do not wrap in conversational text.
+            6. For metrics like Total Posts, extract them if explicitly available; if not visible in search footprints, write "N/A (Manual Check)". Do not invent digits. Provide ONLY the table structure. Do not wrap in conversational text.
             """
             
             try:
