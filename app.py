@@ -1,10 +1,11 @@
-import streamlit as st
+import streamlit st
 from google import genai
 from google.genai import types
 import pandas as pd
 import json
 import re
 
+# 1. Page Configuration & Startup Layout
 st.set_page_config(page_title="Creator Tree", page_icon="🌳", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -70,19 +71,19 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
             
             Task:
             1. Use your integrated Google Search tool to find genuine UK-based creator profiles on Instagram or TikTok matching this vibe.
-            2. Extract exactly: Title/Handle, Link, Platform, Followers (Est), Following Count, Total Posts.
+            2. Extract exactly: Title, Link, Platform, Followers (Est), Following Count, Total Posts.
             3. If a specific metric isn't explicitly visible in your search results, populate it with "N/A (Manual Entry)". Do not guess numbers.
-            4. Return the results ONLY as a valid JSON array of objects.
+            4. Return the results ONLY as a valid raw JSON array of objects inside markdown code brackets. Do not wrap it in prose.
             """
             
             try:
+                # Fixed: Removed conflicting response_mime_type to allow native search tools
                 res = client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=mega_prompt,
                     config=types.GenerateContentConfig(
                         tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.0,
-                        response_mime_type="application/json"
+                        temperature=0.0
                     )
                 )
                 
@@ -91,7 +92,9 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                     st.session_state.discovered_creators = json.loads(json_match.group(0))
                     status.update(label="Report ready!", state="complete")
                 else:
-                    status.update(label="Data formatting failed.", state="error")
+                    status.update(label="Data formatting layout split failed.", state="error")
+                    st.write("Raw Engine Logs:")
+                    st.code(res.text)
             except Exception as e:
                 status.update(label=f"Engine error: {str(e)}", state="error")
 
