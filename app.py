@@ -1,4 +1,4 @@
-import streamlit st
+import streamlit as st
 from google import genai
 from google.genai import types
 import pandas as pd
@@ -37,7 +37,7 @@ st.markdown('<div class="sub-text">Native Search Edition. Built for Gina. ✨</d
 
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-except:
+except Exception as e:
     st.error("🔑 Setup Missing: Ensure GEMINI_API_KEY is configured in Streamlit Secrets.")
     st.stop()
 
@@ -77,7 +77,7 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
             """
             
             try:
-                # Fixed: Removed conflicting response_mime_type to allow native search tools
+                # Execution with Google Search tool enabled
                 res = client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=mega_prompt,
@@ -87,12 +87,13 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                     )
                 )
                 
+                # Robust extraction parsing via regex container matching
                 json_match = re.search(r'\[.*\]', res.text, re.DOTALL)
                 if json_match:
                     st.session_state.discovered_creators = json.loads(json_match.group(0))
                     status.update(label="Report ready!", state="complete")
                 else:
-                    status.update(label="Data formatting layout split failed.", state="error")
+                    status.update(label="Data formatting failed.", state="error")
                     st.write("Raw Engine Logs:")
                     st.code(res.text)
             except Exception as e:
