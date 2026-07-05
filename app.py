@@ -5,7 +5,7 @@ import pandas as pd
 import json
 import re
 
-# 1. Page Configuration & Aesthetic Stylesheet
+# 1. Page Configuration & Elite Startup Stylesheet
 st.set_page_config(page_title="Creator Tree", page_icon="🌳", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -33,7 +33,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="gradient-text">Creator Tree</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">Native Deep-Search Edition. Optimized for full profile curation. ✨</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Hyper-Accurate Sourcing Engine. Optimized for Verified Public Profiles. ✨</div>', unsafe_allow_html=True)
 
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -48,7 +48,6 @@ with col1:
 with col2:
     campaign_brief = st.text_area("🎯 Campaign Goal & Creator Profile", height=120)
 
-# Restored: Full Platform Specification matrix control panel
 with st.expander("⚙️ Advanced Tuning", expanded=True):
     param_col1, param_col2, param_col3 = st.columns(3)
     with param_col1:
@@ -87,27 +86,29 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please provide a campaign goal first.")
     elif not selected_platforms:
-        st.warning("Please select at least one target social platform network.")
+        st.warning("Please select at least one target social network platform.")
     else:
-        with st.status("Performing deep search matrix compilation...", expanded=True) as status:
+        with st.status("Executing public authentication & query layers...", expanded=True) as status:
             platforms_str = " or ".join(selected_platforms)
             mega_prompt = f"""
-            Act as an elite influencer sourcing agent.
-            Brand Identity: {brand_context}
-            Campaign Goal: {campaign_brief}
-            Target Platforms: Only search for profiles on {platforms_str}
-            Target Follower Size: {follower_target}
-            Requested Count: Exactly {profile_count} individual creators.
+            Act as an elite, hyper-focused talent scout specializing in high-fidelity niche influencer discovery.
+            Brand Identity/Vibe: {brand_context}
+            Specific Sourcing Target: {campaign_brief}
+            Target Networks: Only fetch accounts on {platforms_str}
+            Follower Size Guardrail: {follower_target}
+            Required List Count: Exactly {profile_count} individual creators.
             
-            OPERATIONAL STRATEGY:
-            1. Use your integrated Google Search tool to search for UK blogs, listicles, directories, and social footprints containing creators on {platforms_str} matching this domain space.
-            2. Do not just look at the top-level search links. Extract the names/handles of individual creators featured INSIDE those lists, roundups, and articles.
-            3. For every single creator identified, pull or construct their direct absolute profile URL link (e.g., https://www.instagram.com/username or https://www.tiktok.com/@username). Never output short-text links like [Profile].
-            4. You MUST keep compiling unique individual profiles until you reach a total list of {profile_count} distinct creators. Do not stop early.
-            5. Present the final list strictly as a standard Markdown table using this exact layout (Notice: Following Count has been explicitly removed):
-            | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Total Posts |
+            STRICT ACCURACY & ACCESSIBILITY STRATEGY:
+            1. BANNED: Do not pull generic global influencers, automated meme curation channels, or copy high-level names from generic online listicles.
+            2. PUBLIC ACCOUNTS ONLY: Every single profile included must be a public creator page. Carefully evaluate the search snippet metadata. If there is any indication that an account is private, locked, invitation-only, or inactive (e.g., 0 posts), you MUST discard it immediately and find an open option.
+            3. REGIONALITY: Explicitly restrict searches to creators based inside the United Kingdom.
+            4. DIRECT PROFILING: Construct or pull the clean, direct absolute profile URL for every target (e.g., https://www.instagram.com/username or https://www.tiktok.com/@username). 
+            5. RELEVANCE PROOF: For every single account, you must explicitly state exactly WHAT real-world niche utility or specific workflow footage they share that directly ties them to the campaign goals. If you cannot provide a clear proof statement for a profile, discard it.
             
-            6. For metrics like Total Posts, extract them if explicitly available; if not visible in search footprints, write "N/A (Manual Check)". Do not invent digits. Provide ONLY the table structure. Do not wrap in conversational text.
+            Output strictly as a Markdown table using this layout:
+            | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Total Posts | Niche Focus / Proof |
+            
+            For Total Posts and Followers, look at the indexed text strings; if missing or ambiguous, write "N/A (Manual Entry)". Do not include any pre-text or conversational summaries. Just return the structured table.
             """
             
             try:
@@ -116,17 +117,17 @@ if st.button("🚀 Initialize Discovery Engine", type="primary"):
                     contents=mega_prompt,
                     config=types.GenerateContentConfig(
                         tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.2
+                        temperature=0.1
                     )
                 )
                 
                 df = parse_markdown_table(res.text)
                 if df is not None and not df.empty:
                     st.session_state.discovered_creators = df.to_dict('records')
-                    status.update(label=f"Successfully extracted {len(df)} creators!", state="complete")
+                    status.update(label=f"Successfully verified and locked {len(df)} active public creators!", state="complete")
                 else:
-                    status.update(label="Failed to parse structured table layout.", state="error")
-                    st.write("Raw Output Matrix Logs:")
+                    status.update(label="Failed to parse clean layout. Retrying criteria...", state="error")
+                    st.write("Raw Output Logs:")
                     st.write(res.text)
             except Exception as e:
                 status.update(label=f"Engine error: {str(e)}", state="error")
@@ -135,15 +136,16 @@ if st.session_state.discovered_creators:
     st.write("---")
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     
-    # Render interactive data editor interface
+    # Render interactive data editor interface matching the exact prompt keys
     edited_df = st.data_editor(
         df_display,
         column_config={
             "Direct Profile Link": st.column_config.LinkColumn("Profile URL"),
+            "Niche Focus / Proof": st.column_config.TextColumn("Why They Match (Relevancy Filter)", width="large"),
         },
         width="stretch",
         hide_index=True
     )
     
     csv = edited_df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Download Report (CSV)", csv, "creator_report.csv", "text/csv")
+    st.download_button("📥 Download Filtered Report (CSV)", csv, "creator_report.csv", "text/csv")
