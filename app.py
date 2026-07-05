@@ -33,7 +33,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="gradient-text">Creator Tree</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">Hyper-Accurate Sourcing Engine. Optimized for Verified Public Profiles. ✨</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Iterative Deep-Search Matrix. Built for Gina. ✨</div>', unsafe_allow_html=True)
 
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -61,12 +61,12 @@ st.markdown("</div>", unsafe_allow_html=True)
 if "discovered_creators" not in st.session_state: st.session_state.discovered_creators = []
 
 def parse_markdown_table(markdown_text):
-    """Extracts rows from a standard markdown text table and outputs a clean DataFrame."""
+    """Extracts rows from a standard markdown text table and outputs a clean list of dicts."""
     lines = [line.strip() for line in markdown_text.split('\n') if line.strip()]
     table_lines = [line for line in lines if line.startswith('|') and line.endswith('|')]
     
     if len(table_lines) < 2:
-        return None
+        return []
         
     headers = [cell.strip() for cell in table_lines[0].split('|')[1:-1]]
     rows = []
@@ -76,67 +76,96 @@ def parse_markdown_table(markdown_text):
             continue
         cells = [cell.strip() for cell in line.split('|')[1:-1]]
         if len(cells) == len(headers):
-            rows.append(cells)
+            rows.append(dict(zip(headers, cells)))
             
-    if not rows:
-        return None
-    return pd.DataFrame(rows, columns=headers)
+    return rows
 
 if st.button("🚀 Initialize Discovery Engine", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please provide a campaign goal first.")
     elif not selected_platforms:
-        st.warning("Please select at least one target social network platform.")
+        st.warning("Please select at least one target network platform.")
     else:
-        with st.status("Executing public authentication & query layers...", expanded=True) as status:
-            platforms_str = " or ".join(selected_platforms)
-            mega_prompt = f"""
-            Act as an elite, hyper-focused talent scout specializing in high-fidelity niche influencer discovery.
-            Brand Identity/Vibe: {brand_context}
-            Specific Sourcing Target: {campaign_brief}
-            Target Networks: Only fetch accounts on {platforms_str}
-            Follower Size Guardrail: {follower_target}
-            Required List Count: Exactly {profile_count} individual creators.
+        # Segment search strategies into unique sub-batches to force fresh search queries
+        if len(selected_platforms) == 2:
+            sub_batches = [
+                {"platform": "Instagram", "focus": "uk creators, indie hackers, setup vlogs"},
+                {"platform": "TikTok", "focus": "uk tech tools, software development, coding tutorials"},
+                {"platform": "Instagram", "focus": "uk ai automation, productivity systems, workflow optimization"}
+            ]
+        elif "Instagram" in selected_platforms:
+            sub_batches = [
+                {"platform": "Instagram", "focus": "uk indie hackers, tech builders, software engineering"},
+                {"platform": "Instagram", "focus": "uk ai automation tools, productivity workflows"},
+                {"platform": "Instagram", "focus": "uk software creators, technology setups, startup vlogs"}
+            ]
+        else:
+            sub_batches = [
+                {"platform": "TikTok", "focus": "uk tech tools, coding execution, developer life"},
+                {"platform": "TikTok", "focus": "uk ai automation tutorials, prompt engineering"},
+                {"platform": "TikTok", "focus": "uk software builders, tech setup optimization"}
+            ]
             
-            STRICT ACCURACY & ACCESSIBILITY STRATEGY:
-            1. BANNED: Do not pull generic global influencers, automated meme curation channels, or copy high-level names from generic online listicles.
-            2. PUBLIC ACCOUNTS ONLY: Every single profile included must be a public creator page. Carefully evaluate the search snippet metadata. If there is any indication that an account is private, locked, invitation-only, or inactive (e.g., 0 posts), you MUST discard it immediately and find an open option.
-            3. REGIONALITY: Explicitly restrict searches to creators based inside the United Kingdom.
-            4. DIRECT PROFILING: Construct or pull the clean, direct absolute profile URL for every target (e.g., https://www.instagram.com/username or https://www.tiktok.com/@username). 
-            5. RELEVANCE PROOF: For every single account, you must explicitly state exactly WHAT real-world niche utility or specific workflow footage they share that directly ties them to the campaign goals. If you cannot provide a clear proof statement for a profile, discard it.
-            
-            Output strictly as a Markdown table using this layout:
-            | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Total Posts | Niche Focus / Proof |
-            
-            For Total Posts and Followers, look at the indexed text strings; if missing or ambiguous, write "N/A (Manual Entry)". Do not include any pre-text or conversational summaries. Just return the structured table.
-            """
-            
-            try:
-                res = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=mega_prompt,
-                    config=types.GenerateContentConfig(
-                        tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.1
-                    )
-                )
+        master_rows = []
+        
+        with st.status("Executing sequential batch intelligence loops...", expanded=True) as status:
+            for i, batch in enumerate(sub_batches):
+                status.update(label=f"Scanning Batch {i+1}/3 ({batch['platform']} - {batch['focus']})...", state="running")
                 
-                df = parse_markdown_table(res.text)
-                if df is not None and not df.empty:
-                    st.session_state.discovered_creators = df.to_dict('records')
-                    status.update(label=f"Successfully verified and locked {len(df)} active public creators!", state="complete")
-                else:
-                    status.update(label="Failed to parse clean layout. Retrying criteria...", state="error")
-                    st.write("Raw Output Logs:")
-                    st.write(res.text)
-            except Exception as e:
-                status.update(label=f"Engine error: {str(e)}", state="error")
+                mega_prompt = f"""
+                Act as an elite talent scout specializing in high-fidelity influencer discovery.
+                Brand Identity: {brand_context}
+                Sourcing Request: {campaign_brief}
+                Target Network: {batch['platform']}
+                Follower Size Guardrail: {follower_target}
+                Specific Search Lens Focus: {batch['focus']}
+                
+                CRITICAL OPERATIONAL RULES:
+                1. PUBLIC ACCOUNTS ONLY: Every profile included must be a public creator page. If there is any indication that an account is private, locked, or completely inactive, discard it immediately.
+                2. REGIONALITY: Restrict profiles strictly to individuals located within the United Kingdom.
+                3. DIRECT PROFILING: Provide the complete absolute profile URL link (e.g., https://www.instagram.com/username or https://www.tiktok.com/@username). Never output short-text markdown links like [Profile].
+                4. RELEVANCE PROOF: You must explicitly state exactly WHAT real-world niche utility or specific project workflow they share that ties them directly to the goals.
+                5. Extract exactly 7 unique, highly contextual profiles for this specific batch.
+                
+                Output strictly as a Markdown table using this layout:
+                | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Total Posts | Niche Focus / Proof |
+                
+                For metrics, read the indexed text string; if missing, write "N/A (Manual Entry)". Do not include pre-text or summaries.
+                """
+                
+                try:
+                    res = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=mega_prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(google_search=types.GoogleSearch())],
+                            temperature=0.2
+                        )
+                    )
+                    
+                    parsed_rows = parse_markdown_table(res.text)
+                    if parsed_rows:
+                        master_rows.extend(parsed_rows)
+                except Exception as e:
+                    st.sidebar.error(f"Batch {i+1} anomaly caught: {str(e)}")
+                    continue
+            
+            if master_rows:
+                df_results = pd.DataFrame(master_rows)
+                # Safeguard: Clean and format data keys securely
+                if "Direct Profile Link" in df_results.columns:
+                    df_results = df_results.drop_duplicates(subset=["Direct Profile Link"])
+                
+                df_results = df_results.head(profile_count)
+                st.session_state.discovered_creators = df_results.to_dict('records')
+                status.update(label=f"Successfully compiled and deduplicated {len(df_results)} public creators!", state="complete")
+            else:
+                status.update(label="Sourcing loops returned empty matrices. Adjust tuning tags.", state="error")
 
 if st.session_state.discovered_creators:
     st.write("---")
     df_display = pd.DataFrame(st.session_state.discovered_creators)
     
-    # Render interactive data editor interface matching the exact prompt keys
     edited_df = st.data_editor(
         df_display,
         column_config={
