@@ -5,13 +5,13 @@ import pandas as pd
 import json
 import re
 
-# 1. Page Configuration & Startup Layout
+# 1. Page Configuration & Layout Customization
 st.set_page_config(page_title="Creator Tree", page_icon="🌳", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght=400;600;800&display=swap');
     .stApp { background-color: #050505; color: #ededed; font-family: 'Inter', sans-serif; }
     .gradient-text {
         background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
@@ -33,7 +33,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="gradient-text">Creator Tree</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">Native Search Edition. Built for Gina. ✨</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Native Deep-Search Edition. Optimized for full profile curation. ✨</div>', unsafe_allow_html=True)
 
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -58,50 +58,86 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 if "discovered_creators" not in st.session_state: st.session_state.discovered_creators = []
 
+def parse_markdown_table(markdown_text):
+    """Extracts rows from a standard markdown text table and outputs a clean DataFrame."""
+    lines = [line.strip() for line in markdown_text.split('\n') if line.strip()]
+    table_lines = [line for line in lines if line.startswith('|') and line.endswith('|')]
+    
+    if len(table_lines) < 2:
+        return None
+        
+    headers = [cell.strip() for cell in table_lines[0].split('|')[1:-1]]
+    rows = []
+    
+    for line in table_lines[1:]:
+        # Skip standard markdown layout separator rows
+        if '-' in line and line.count('-') > 3:
+            continue
+        cells = [cell.strip() for cell in line.split('|')[1:-1]]
+        if len(cells) == len(headers):
+            rows.append(cells)
+            
+    if not rows:
+        return None
+    return pd.DataFrame(rows, columns=headers)
+
 if st.button("🚀 Initialize Discovery Engine", type="primary"):
     if not campaign_brief.strip():
         st.warning("Please provide a campaign goal first.")
     else:
-        with st.status("Assembling creator matrix...", expanded=True) as status:
+        with st.status("Performing deep search matrix compilation...", expanded=True) as status:
             mega_prompt = f"""
-            Act as an expert researcher. 
-            Brand Context: {brand_context}
-            Goal: {campaign_brief}
-            Target Followers: {follower_target}
+            Act as an elite influencer sourcing agent.
+            Brand Identity: {brand_context}
+            Campaign Goal: {campaign_brief}
+            Target Follower Size: {follower_target}
+            Requested Count: Exactly {profile_count} individual creators.
             
-            Task:
-            1. Use your integrated Google Search tool to find genuine UK-based creator profiles on Instagram or TikTok matching this vibe.
-            2. Extract exactly: Title, Link, Platform, Followers (Est), Following Count, Total Posts.
-            3. If a specific metric isn't explicitly visible in your search results, populate it with "N/A (Manual Entry)". Do not guess numbers.
-            4. Return the results ONLY as a valid raw JSON array of objects inside markdown code brackets. Do not wrap it in prose.
+            OPERATIONAL STRATEGY:
+            1. Use your integrated Google Search tool to search for UK blogs, listicles, directories, and social footprints containing creators in this space.
+            2. Do not just look at the top-level search links. Extract the names/handles of individual creators featured INSIDE those lists, roundups, and articles.
+            3. For every single creator identified, pull or construct their direct absolute profile URL link (e.g., https://www.instagram.com/username or https://www.tiktok.com/@username). Never output short-text links like [Profile].
+            4. You MUST keep compiling unique individual profiles until you reach a total list of {profile_count} distinct creators. Do not stop early.
+            5. Present the final list strictly as a standard Markdown table using this exact layout:
+            | Creator Handle | Direct Profile Link | Platform | Followers (Est) | Following Count | Total Posts |
+            
+            6. For metrics like Following Count and Total Posts, extract them if explicitly available; if not visible in search footprints, write "N/A (Manual Check)". Do not invent digits. Provide ONLY the table structure. Do not wrap in conversational text.
             """
             
             try:
-                # Execution with Google Search tool enabled
                 res = client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=mega_prompt,
                     config=types.GenerateContentConfig(
                         tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.0
+                        temperature=0.2
                     )
                 )
                 
-                # Robust extraction parsing via regex container matching
-                json_match = re.search(r'\[.*\]', res.text, re.DOTALL)
-                if json_match:
-                    st.session_state.discovered_creators = json.loads(json_match.group(0))
-                    status.update(label="Report ready!", state="complete")
+                df = parse_markdown_table(res.text)
+                if df is not None and not df.empty:
+                    st.session_state.discovered_creators = df.to_dict('records')
+                    status.update(label=f"Successfully extracted {len(df)} creators!", state="complete")
                 else:
-                    status.update(label="Data formatting failed.", state="error")
-                    st.write("Raw Engine Logs:")
-                    st.code(res.text)
+                    status.update(label="Failed to parse structured table layout.", state="error")
+                    st.write("Raw Output Matrix Logs:")
+                    st.write(res.text)
             except Exception as e:
                 status.update(label=f"Engine error: {str(e)}", state="error")
 
 if st.session_state.discovered_creators:
     st.write("---")
     df_display = pd.DataFrame(st.session_state.discovered_creators)
-    edited_df = st.data_editor(df_display, width="stretch", hide_index=True)
+    
+    # Render interactive data editor interface
+    edited_df = st.data_editor(
+        df_display,
+        column_config={
+            "Direct Profile Link": st.column_config.LinkColumn("Profile URL"),
+        },
+        width="stretch",
+        hide_index=True
+    )
+    
     csv = edited_df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 Download Report (CSV)", csv, "creator_report.csv", "text/csv")
